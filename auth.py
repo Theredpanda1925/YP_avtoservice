@@ -1,7 +1,7 @@
 # auth.py - Модуль авторизации
 import tkinter as tk
 from tkinter import messagebox, ttk
-import os  # ВАЖНО: добавить этот импорт
+import os
 from data_manager import DataManager
 from gui.main_window import MainWindow
 
@@ -9,7 +9,7 @@ class AuthWindow:
     def __init__(self, root):
         self.root = root
         self.root.title("Авторизация - АвтоТранс")
-        self.root.geometry("350x270")
+        self.root.geometry("350x320")
         self.root.resizable(False, False)
         
         # Центрирование окна
@@ -25,6 +25,9 @@ class AuthWindow:
         self.requests = self.data_manager.load_requests(os.path.join(base_path, "inputDataRequests.txt"))
         self.comments = self.data_manager.load_comments(os.path.join(base_path, "inputDataComments.txt"))
         
+        # Добавляем менеджера по качеству в список пользователей
+        self.add_quality_manager()
+        
         # Преобразуем логины в понятный вид для демо
         self.prepare_users_for_demo()
         
@@ -35,6 +38,47 @@ class AuthWindow:
         
         # Создание виджетов
         self.create_widgets()
+    
+    def add_quality_manager(self):
+        """Добавляет менеджера по качеству в список пользователей, если его нет"""
+        
+        # Проверяем, есть ли уже менеджер по качеству
+        quality_exists = False
+        for user in self.users:
+            if user.get('role') == 'Менеджер по качеству':
+                quality_exists = True
+                break
+        
+        if not quality_exists:
+            # Создаем нового пользователя
+            quality_manager = {
+                'id': 11,
+                'fio': 'Петров Иван Сергеевич',
+                'phone': '89111234567',
+                'login': 'quality',
+                'password': '123',
+                'role': 'Менеджер по качеству'
+            }
+            self.users.append(quality_manager)
+            print("✅ Добавлен менеджер по качеству (ID: 11)")
+            
+            # Также добавляем в файл, чтобы сохранить
+            try:
+                with open("inputDataUsers.txt", "a", encoding="utf-8") as f:
+                    # Проверяем, есть ли уже запись с ID 11
+                    with open("inputDataUsers.txt", "r", encoding="utf-8") as fr:
+                        lines = fr.readlines()
+                        id_exists = False
+                        for line in lines:
+                            if line.startswith("11;"):
+                                id_exists = True
+                                break
+                    
+                    if not id_exists:
+                        f.write(f"11;Петров Иван Сергеевич;89111234567;quality;123;Менеджер по качеству\n")
+                        print("✅ Менеджер по качеству добавлен в файл inputDataUsers.txt")
+            except Exception as e:
+                print(f"⚠️ Не удалось записать в файл: {e}")
         
     def prepare_users_for_demo(self):
         """Преобразует логины в понятный вид для демонстрации"""
@@ -49,7 +93,8 @@ class AuthWindow:
             7: {'login': 'client2', 'password': '123'},      # Ильина - Заказчик
             8: {'login': 'client3', 'password': '123'},      # Елисеева - Заказчик
             9: {'login': 'client4', 'password': '123'},      # Никифорова - Заказчик
-            10: {'login': 'mechanic3', 'password': '123'}    # Васильев - Автомеханик
+            10: {'login': 'mechanic3', 'password': '123'},   # Васильев - Автомеханик
+            11: {'login': 'quality', 'password': '123'}      # Петров - Менеджер по качеству
         }
         
         for user in self.users:
@@ -69,6 +114,7 @@ class AuthWindow:
         print("client2 / 123 - Заказчик")
         print("client3 / 123 - Заказчик")
         print("client4 / 123 - Заказчик")
+        print("quality / 123 - Менеджер по качеству")
         print("================================\n")
         
     def center_window(self):
@@ -122,7 +168,8 @@ class AuthWindow:
         hint_text += "manager/123 (менеджер)\n"
         hint_text += "mechanic1/123 (механик)\n"
         hint_text += "operator1/123 (оператор)\n"
-        hint_text += "client1/123 (заказчик)"
+        hint_text += "client1/123 (заказчик)\n"
+        hint_text += "quality/123 (менеджер по качеству)"
         
         hint_label = tk.Label(
             frame,
@@ -170,13 +217,22 @@ class AuthWindow:
             # Открываем главное окно
             self.root.withdraw()  # Скрываем окно авторизации
             main_window = tk.Toplevel()
-            app = MainWindow(
-                main_window, 
-                current_user, 
-                self.requests, 
-                self.comments,
-                self.users
-            )
+            
+            # Если пользователь - Менеджер по качеству, открываем специальное окно
+            if current_user['role'] == 'Менеджер по качеству':
+                from quality_manager import QualityManagerWindow
+                # Создаем временное подключение к БД (если нужно)
+                import sqlite3
+                conn = sqlite3.connect('autoservice.db')
+                app = QualityManagerWindow(main_window, current_user, conn)
+            else:
+                app = MainWindow(
+                    main_window, 
+                    current_user, 
+                    self.requests, 
+                    self.comments,
+                    self.users
+                )
             
             # Когда главное окно закрывается, показываем окно авторизации
             main_window.protocol("WM_DELETE_WINDOW", lambda: self.on_main_window_close(main_window))
@@ -185,10 +241,11 @@ class AuthWindow:
                 "Ошибка авторизации",
                 "Неверный логин или пароль!\n"
                 "Используйте тестовые данные:\n"
-                "manager / 123\n"
-                "mechanic1 / 123\n"
-                "operator1 / 123\n"
-                "client1 / 123"
+                "manager/123 (менеджер)\n"
+                "mechanic1/123 (механик)\n"
+                "operator1/123 (оператор)\n"
+                "client1/123 (заказчик)\n"
+                "quality/123 (менеджер по качеству)"
             )
             self.password_entry.delete(0, tk.END)
             self.login_entry.focus()
